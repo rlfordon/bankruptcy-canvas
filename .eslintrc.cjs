@@ -9,6 +9,10 @@ module.exports = {
     'plugin:react/recommended',
     'plugin:react-hooks/recommended',
   ],
-  settings: { react: { version: '18' } },
-  rules: { 'react/react-in-jsx-scope': 'off' },
+  env: { browser: true, node: true, es2022: true },
+  settings: { react: { version: 'detect' } },
+  rules: {
+    'react/react-in-jsx-scope': 'off',
+    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+  },
 };
