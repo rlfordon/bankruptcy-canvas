@@ -6,3 +6,7 @@ public/data
 playwright-report
 test-results
 .vite
+coverage
+.env
+.env.*.local
+*.tsbuildinfo
