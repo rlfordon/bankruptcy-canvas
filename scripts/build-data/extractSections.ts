@@ -73,23 +73,31 @@ function inlineNodesOf(x: unknown): SectionNode[] {
   return out;
 }
 
-function numberToIdSuffix(level: SectionBodyUnit['level'], num: string): string {
-  const stripped = num.replace(/[()]/g, '');
-  if (!stripped) return '';
-  return `(${stripped})`;
-}
-
 function buildUnit(
   node: Record<string, unknown>,
   level: SectionBodyUnit['level'],
   parentId: string,
 ): SectionBodyUnit {
+  // fast-xml-parser can demote an empty tag (e.g. `<subsection/>`) to a string.
+  // Skip it defensively so callers' children arrays stay well-typed.
+  if (typeof node !== 'object' || node === null) {
+    return { id: parentId, level, num: '', nodes: [], children: [] };
+  }
+  // At the section level, parentId is already the section number (e.g., '546')
+  // and the Section.num field is empty per the type contract. For all other
+  // levels, this unit's <num> appends to parentId (e.g., '546' + '(a)' → '546(a)').
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const numRaw = (node.num as any)?.['@_value'] ?? '';
-  const num = numRaw ? `(${String(numRaw)})` : '';
-  const id = `${parentId}${numberToIdSuffix(level, num)}`;
+  const num = level === 'section' ? '' : numRaw ? `(${String(numRaw)})` : '';
+  const id = level === 'section' ? parentId : `${parentId}${num}`;
 
-  // Inline content can live in `content`, `chapeau`, or loose `#text`.
+  // Order matters at THIS granularity: USLM emits chapeau → content → trailing
+  // text, and that outer order is preserved here. NOTE: within a single
+  // <content> that mixes refs and text (e.g. "...under <ref>X</ref> or <ref>Y</ref> may..."),
+  // `preserveOrder: false` in parseXml.ts means fast-xml-parser groups all refs
+  // and merges all text siblings — so `nodes` currently emits [all refs, then
+  // the merged text] rather than source-order. Fix before Task 19; see
+  // project_inline_order_debt memory note.
   const inlineSources: unknown[] = [node.chapeau, node.content, node['#text']];
   const nodes: SectionNode[] = [];
   for (const s of inlineSources) nodes.push(...inlineNodesOf(s));

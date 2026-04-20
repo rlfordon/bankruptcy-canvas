@@ -33,4 +33,34 @@ describe('extractSections', () => {
       value: 'section 547',
     });
   });
+
+  it('recurses through three levels of hierarchy and builds dotted ids', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<uscDoc xmlns="http://xml.house.gov/schemas/uslm/1.0" identifier="/us/usc/t11">
+  <main><title identifier="/us/usc/t11"><num value="11">Title 11</num><heading>BANKRUPTCY</heading>
+    <chapter identifier="/us/usc/t11/ch5"><num value="5">5</num><heading>Creditors</heading>
+      <section identifier="/us/usc/t11/s547"><num value="547">§ 547</num><heading>Preferences</heading>
+        <subsection identifier="/us/usc/t11/s547/a"><num value="a">(a)</num>
+          <paragraph identifier="/us/usc/t11/s547/a/1"><num value="1">(1)</num>
+            <subparagraph identifier="/us/usc/t11/s547/a/1/A"><num value="A">(A)</num><content>leaf</content></subparagraph>
+          </paragraph>
+        </subsection>
+      </section>
+    </chapter>
+  </title></main>
+</uscDoc>`;
+    const sections = extractSections(parseUscXml(xml));
+    const s547 = sections.find((s) => s.sectionNumber === '547')!;
+    // Section body id equals the section number — not '547(547)'.
+    expect(s547.body.id).toBe('547');
+    expect(s547.body.num).toBe('');
+    const subA = s547.body.children[0]!;
+    const para1 = subA.children[0]!;
+    const subparaA = para1.children[0]!;
+    expect(subA.id).toBe('547(a)');
+    expect(para1.id).toBe('547(a)(1)');
+    expect(subparaA.id).toBe('547(a)(1)(A)');
+    expect(subparaA.level).toBe('subparagraph');
+    expect(subparaA.nodes[0]).toEqual({ kind: 'text', value: 'leaf' });
+  });
 });
