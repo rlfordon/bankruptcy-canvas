@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<uscDoc xmlns="http://xml.house.gov/schemas/uslm/1.0" identifier="/us/usc/t11">
+  <main>
+    <title identifier="/us/usc/t11"><num value="11">Title 11—</num><heading>BANKRUPTCY</heading>
+      <chapter identifier="/us/usc/t11/ch1"><num value="1">CHAPTER 1—</num><heading>General</heading>
+        <section identifier="/us/usc/t11/s101"><num value="101">§ 101.</num><heading>Definitions</heading>
+          <chapeau>In this title the following definitions shall apply:</chapeau>
+          <paragraph identifier="/us/usc/t11/s101/5"><num value="5">(5)</num><content>The term "claim" means right to payment.</content></paragraph>
+          <paragraph identifier="/us/usc/t11/s101/10"><num value="10">(10)</num><content>"creditor" means entity that has a claim.</content></paragraph>
+        </section>
+      </chapter>
+    </title>
+  </main>
+</uscDoc>
