@@ -38,4 +38,20 @@ describe('extractTerms — title-scoped', () => {
       'right to payment, whether or not such right is reduced to judgment; right to an equitable remedy for breach of performance',
     );
   });
+
+  it('skips Definitions-headed sections whose chapeau names no scope', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<uscDoc xmlns="http://xml.house.gov/schemas/uslm/1.0" identifier="/us/usc/t11">
+  <main><title identifier="/us/usc/t11"><num value="11">Title 11</num><heading>BANKRUPTCY</heading>
+    <chapter identifier="/us/usc/t11/ch5"><num value="5">5</num><heading>Creditors</heading>
+      <section identifier="/us/usc/t11/s999"><num value="999">§ 999</num><heading>Definitions</heading>
+        <chapeau>As used herein—</chapeau>
+        <paragraph identifier="/us/usc/t11/s999/1"><num value="1">(1)</num><content>"foo" means bar.</content></paragraph>
+      </section>
+    </chapter>
+  </title></main>
+</uscDoc>`;
+    const terms = extractTerms(parseUscXml(xml));
+    expect(Object.keys(terms)).toHaveLength(0);
+  });
 });

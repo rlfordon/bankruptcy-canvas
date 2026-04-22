@@ -16,7 +16,8 @@ const CHAPTER_SCOPE_RE = /\bin\s+this\s+(?:chapter|subchapter)\b/i;
 
 // Match `The term "X" means Y` (with optional "The term " prefix and `includes` alt).
 // Group 1 = the quoted term. Group 2 = the definition body (up to `;` or end).
-const TERM_RE = /(?:The\s+term\s+)?"([^"]+)"\s+(?:means|includes)\s+([\s\S]+?)(?:;|$)/i;
+// Anchored at start so phrases that merely quote a term mid-sentence don't match.
+const TERM_RE = /^\s*(?:The\s+term\s+)?"([^"]+)"\s+(?:means|includes)\s+([\s\S]+?)(?:;|$)/i;
 
 // Looser match for the "chapeau + subparagraphs" shape, where the chapeau ends with
 // `means—` (em dash) or `includes—` and the actual definition lives in child tags.
@@ -70,13 +71,21 @@ function extractFromParagraph(po: Record<string, unknown>): Omit<ParaHit, 'num'>
   if (!nameMatch) return null;
   const term = nameMatch[1]!.trim().toLowerCase();
 
+  // TODO(Task 8): handle subparagraphs that wrap <clause>/<subparagraph> children.
+  //   § 101(2) "affiliate" truncates here because we only read the subparagraph's
+  //   chapeau, not its clauses. A recursive bodyTextOf(node) helper would fix this.
+  // TODO(Task 8): if a paragraph has BOTH <content> and <subparagraph>[], prefer
+  //   the subparagraph join (currently short-circuits at content).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const subparas = asArray<any>(po.subparagraph as any);
   const parts = subparas
     .map((s) => {
       const so = s as Record<string, unknown>;
       return normalizeQuotes(textOf(so.content ?? so.chapeau ?? so['#text'])).trim()
-        .replace(/;$/, '');
+        // USLM subparagraphs commonly end with "; or" / "; and" / ";" — strip the
+        // trailing connective so the joined definition reads cleanly.
+        .replace(/\s*;\s*(?:or|and)\s*$/i, '')
+        .replace(/;\s*$/, '');
     })
     .filter(Boolean);
 
@@ -137,6 +146,8 @@ export function extractTerms(tree: any): TermMap {
       const titleScoped = TITLE_SCOPE_RE.test(chapeauText);
       const chapterScoped = CHAPTER_SCOPE_RE.test(chapeauText);
       if (!titleScoped && !chapterScoped) continue;
+      // Invariant: every <chapter> in Title 11 has <num value>. An empty chapterNum
+      // would produce scope 'chapter:' — not observed in usc11.xml today.
       const scope: TermCandidate['scope'] = titleScoped ? 'title' : `chapter:${chapterNum}`;
 
       for (const { num, term, definition } of iterParagraphs(s)) {
