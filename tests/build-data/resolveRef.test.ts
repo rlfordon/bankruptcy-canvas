@@ -21,4 +21,8 @@ describe('resolveRef', () => {
   it('marks malformed href as external', () => {
     expect(resolveRef('/us/pl/95/598')).toEqual({ kind: 'external', href: '/us/pl/95/598' });
   });
+
+  it('marks chapter-level Title-11 href as external (not clickable to a section)', () => {
+    expect(resolveRef('/us/usc/t11/ch1')).toEqual({ kind: 'external', href: '/us/usc/t11/ch1' });
+  });
 });
