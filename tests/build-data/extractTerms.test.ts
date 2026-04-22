@@ -26,4 +26,16 @@ describe('extractTerms — title-scoped', () => {
     const terms = extractTerms(parseUscXml(xml));
     expect(terms.claim).toBeDefined();
   });
+
+  it('extracts chapeau-plus-subparagraph terms, joining parts with "; "', () => {
+    const terms = extractTerms(parseUscXml(fixture('subparagraph-term.xml')));
+    expect(terms.claim).toBeDefined();
+    const cand = terms.claim!.candidates[0]!;
+    expect(cand.section).toBe('101');
+    expect(cand.subsection).toBe('(5)');
+    expect(cand.scope).toBe('title');
+    expect(cand.definition).toBe(
+      'right to payment, whether or not such right is reduced to judgment; right to an equitable remedy for breach of performance',
+    );
+  });
 });

@@ -14,8 +14,14 @@ export type TermMap = Record<string, TermEntry>;
 const TITLE_SCOPE_RE = /\bin\s+this\s+title\b/i;
 const CHAPTER_SCOPE_RE = /\bin\s+this\s+(?:chapter|subchapter)\b/i;
 
-// Match: `The term "X" means Y` or `"X" means Y` (with straight quotes after normalization).
+// Match `The term "X" means Y` (with optional "The term " prefix and `includes` alt).
+// Group 1 = the quoted term. Group 2 = the definition body (up to `;` or end).
 const TERM_RE = /(?:The\s+term\s+)?"([^"]+)"\s+(?:means|includes)\s+([\s\S]+?)(?:;|$)/i;
+
+// Looser match for the "chapeau + subparagraphs" shape, where the chapeau ends with
+// `means—` (em dash) or `includes—` and the actual definition lives in child tags.
+// We only need the term name from this match; the definition is assembled separately.
+const TERM_NAME_RE = /(?:The\s+term\s+)?"([^"]+)"\s+(?:means|includes)/i;
 
 function normalizeQuotes(s: string): string {
   return s.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'");
@@ -35,21 +41,74 @@ function textOf(x: unknown): string {
   return String(x);
 }
 
-function iterParagraphs(sec: unknown): Array<{ num: string; text: string }> {
-  const out: Array<{ num: string; text: string }> = [];
+interface ParaHit {
+  num: string;
+  term: string;
+  definition: string;
+}
+
+function asArray<T>(x: T | T[] | undefined): T[] {
+  if (x == null) return [];
+  return Array.isArray(x) ? x : [x];
+}
+
+function extractFromParagraph(po: Record<string, unknown>): Omit<ParaHit, 'num'> | null {
+  // Simple case: content has the full definition.
+  const contentText = normalizeQuotes(textOf(po.content));
+  if (contentText) {
+    const m = contentText.match(TERM_RE);
+    if (m && m[2]!.trim()) {
+      return { term: m[1]!.trim().toLowerCase(), definition: m[2]!.trim() };
+    }
+  }
+
+  // Complex case: chapeau names the term; subparagraphs hold the definition body.
+  const chapeauText = normalizeQuotes(textOf(po.chapeau));
+  if (!chapeauText) return null;
+
+  const nameMatch = chapeauText.match(TERM_NAME_RE);
+  if (!nameMatch) return null;
+  const term = nameMatch[1]!.trim().toLowerCase();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const subparas = asArray<any>(po.subparagraph as any);
+  const parts = subparas
+    .map((s) => {
+      const so = s as Record<string, unknown>;
+      return normalizeQuotes(textOf(so.content ?? so.chapeau ?? so['#text'])).trim()
+        .replace(/;$/, '');
+    })
+    .filter(Boolean);
+
+  if (parts.length > 0) {
+    return { term, definition: parts.join('; ') };
+  }
+
+  // Last resort: chapeau itself contained a full "means Y." definition.
+  const full = chapeauText.match(TERM_RE);
+  if (full && full[2]!.trim()) {
+    return { term, definition: full[2]!.trim() };
+  }
+
+  return null;
+}
+
+function iterParagraphs(sec: unknown): ParaHit[] {
+  const out: ParaHit[] = [];
   const walk = (node: unknown) => {
     if (node == null || typeof node !== 'object') return;
     const o = node as Record<string, unknown>;
-    const paras = Array.isArray(o.paragraph) ? o.paragraph : o.paragraph ? [o.paragraph] : [];
-    for (const p of paras) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const p of asArray<any>(o.paragraph)) {
       const po = p as Record<string, unknown>;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const numRaw = (po.num as any)?.['@_value'] ?? '';
       const num = numRaw ? `(${numRaw})` : '';
-      out.push({ num, text: normalizeQuotes(textOf(po.content ?? po.chapeau ?? po['#text'])) });
+      const hit = extractFromParagraph(po);
+      if (hit) out.push({ num, ...hit });
     }
-    const subs = Array.isArray(o.subsection) ? o.subsection : o.subsection ? [o.subsection] : [];
-    for (const s of subs) walk(s);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const s of asArray<any>(o.subsection)) walk(s);
   };
   walk(sec);
   return out;
@@ -59,34 +118,28 @@ function iterParagraphs(sec: unknown): Array<{ num: string; text: string }> {
 export function extractTerms(tree: any): TermMap {
   const terms: TermMap = {};
   const title = tree.uscDoc.main.title;
-  const chapters = Array.isArray(title.chapter) ? title.chapter : [title.chapter];
+  const chapters = asArray(title.chapter);
 
   for (const ch of chapters) {
     const chapterNum = String(ch.num?.['@_value'] ?? '');
-    const secArr = Array.isArray(ch.section) ? ch.section : ch.section ? [ch.section] : [];
-    const subchapterArr = Array.isArray(ch.subchapter) ? ch.subchapter : ch.subchapter ? [ch.subchapter] : [];
-    const allSections = [...secArr];
-    for (const sub of subchapterArr) {
-      const s2 = Array.isArray(sub.section) ? sub.section : sub.section ? [sub.section] : [];
-      allSections.push(...s2);
+    const allSections = [...asArray(ch.section)];
+    for (const sub of asArray(ch.subchapter)) {
+      allSections.push(...asArray((sub as Record<string, unknown>).section));
     }
 
     for (const sec of allSections) {
-      const sectionNumber = String(sec.num?.['@_value'] ?? '');
-      const heading = textOf(sec.heading).trim();
+      const s = sec as Record<string, unknown>;
+      const sectionNumber = String((s.num as Record<string, unknown>)?.['@_value'] ?? '');
+      const heading = textOf(s.heading).trim();
       if (!/definition/i.test(heading)) continue;
 
-      const chapeauText = normalizeQuotes(textOf(sec.chapeau));
+      const chapeauText = normalizeQuotes(textOf(s.chapeau));
       const titleScoped = TITLE_SCOPE_RE.test(chapeauText);
       const chapterScoped = CHAPTER_SCOPE_RE.test(chapeauText);
       if (!titleScoped && !chapterScoped) continue;
       const scope: TermCandidate['scope'] = titleScoped ? 'title' : `chapter:${chapterNum}`;
 
-      for (const { num, text } of iterParagraphs(sec)) {
-        const m = text.match(TERM_RE);
-        if (!m) continue;
-        const term = m[1]!.trim().toLowerCase();
-        const definition = m[2]!.trim();
+      for (const { num, term, definition } of iterParagraphs(s)) {
         const entry = terms[term] ?? { candidates: [] };
         entry.candidates.push({ section: sectionNumber, subsection: num, scope, definition });
         terms[term] = entry;
