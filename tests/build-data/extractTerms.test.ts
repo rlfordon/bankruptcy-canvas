@@ -55,3 +55,15 @@ describe('extractTerms — title-scoped', () => {
     expect(Object.keys(terms)).toHaveLength(0);
   });
 });
+
+describe('extractTerms — chapter-scoped', () => {
+  it('assigns chapter:N scope when chapeau says "In this subchapter"', () => {
+    const terms = extractTerms(parseUscXml(fixture('chapter-scoped-terms.xml')));
+    expect(terms['settlement payment']!.candidates[0]).toEqual({
+      section: '741',
+      subsection: '(8)',
+      scope: 'chapter:7',
+      definition: 'a preliminary settlement payment.',
+    });
+  });
+});
