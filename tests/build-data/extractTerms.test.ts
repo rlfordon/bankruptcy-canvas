@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseUscXml } from '../../scripts/build-data/parseXml';
-import { extractTerms } from '../../scripts/build-data/extractTerms';
+import { extractTerms, tagTermUsage } from '../../scripts/build-data/extractTerms';
+import { extractSections } from '../../scripts/build-data/extractSections';
 
 const fixture = (name: string) =>
   readFileSync(join(__dirname, 'fixtures', name), 'utf8');
@@ -74,5 +75,17 @@ describe('extractTerms — ambiguity', () => {
     const scopes = terms.person!.candidates.map((c) => c.scope).sort();
     expect(scopes).toEqual(['chapter:7', 'title']);
     expect(terms.person!.candidates).toHaveLength(2);
+  });
+});
+
+describe('tagTermUsage', () => {
+  it('rewrites inline text into term nodes where defined terms appear', () => {
+    const tree = parseUscXml(fixture('minimal.xml'));
+    const sections = extractSections(tree);
+    const tagged = tagTermUsage(sections, ['claim']);
+    const s101 = tagged.find((s) => s.sectionNumber === '101')!;
+    const para = s101.body.children[0]!;
+    const hasTermNode = para.nodes.some((n) => n.kind === 'term' && n.term === 'claim');
+    expect(hasTermNode).toBe(true);
   });
 });

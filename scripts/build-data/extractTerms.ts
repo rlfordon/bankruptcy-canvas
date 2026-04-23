@@ -1,3 +1,5 @@
+import type { Section, SectionBodyUnit, SectionNode } from './extractSections';
+
 export interface TermCandidate {
   section: string;
   subsection: string;       // '(5)', '(8)', etc.
@@ -159,4 +161,54 @@ export function extractTerms(tree: any): TermMap {
   }
 
   return terms;
+}
+
+function splitOnTerms(text: string, sortedTerms: string[]): SectionNode[] {
+  if (!text) return [];
+  const out: SectionNode[] = [];
+  let cursor = 0;
+  const lower = text.toLowerCase();
+  while (cursor < text.length) {
+    let hit: { term: string; index: number } | null = null;
+    for (const term of sortedTerms) {
+      const idx = lower.indexOf(term, cursor);
+      if (idx < 0) continue;
+      // whole-word boundary check
+      const before = idx === 0 ? ' ' : text[idx - 1]!;
+      const after = idx + term.length >= text.length ? ' ' : text[idx + term.length]!;
+      if (/\w/.test(before) || /\w/.test(after)) continue;
+      if (!hit || idx < hit.index) hit = { term, index: idx };
+    }
+    if (!hit) {
+      out.push({ kind: 'text', value: text.slice(cursor) });
+      break;
+    }
+    if (hit.index > cursor) out.push({ kind: 'text', value: text.slice(cursor, hit.index) });
+    out.push({
+      kind: 'term',
+      term: hit.term,
+      value: text.slice(hit.index, hit.index + hit.term.length),
+    });
+    cursor = hit.index + hit.term.length;
+  }
+  return out;
+}
+
+function rewriteUnit(unit: SectionBodyUnit, sortedTerms: string[]): SectionBodyUnit {
+  const nodes: SectionNode[] = [];
+  for (const n of unit.nodes) {
+    if (n.kind === 'text') nodes.push(...splitOnTerms(n.value, sortedTerms));
+    else nodes.push(n);
+  }
+  return {
+    ...unit,
+    nodes,
+    children: unit.children.map((c) => rewriteUnit(c, sortedTerms)),
+  };
+}
+
+export function tagTermUsage(sections: Section[], termNames: string[]): Section[] {
+  // Longest-first so "settlement payment" matches before "settlement".
+  const sorted = [...termNames].sort((a, b) => b.length - a.length);
+  return sections.map((s) => ({ ...s, body: rewriteUnit(s.body, sorted) }));
 }
