@@ -2,10 +2,12 @@ import { useCallback, useMemo } from 'react';
 import {
   ReactFlow, ReactFlowProvider, Background, Controls,
   type Node, type Edge as FlowEdge, type NodeChange, type EdgeChange,
+  type Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { nanoid } from 'nanoid';
 import { useSessionStore } from '@/state/sessionStore';
-import { moveCard } from '@/state/cardOps';
+import { moveCard, addEdge as addEdgeOp } from '@/state/cardOps';
 import SectionCardNode from './SectionCard';
 import DefinitionCardNode from './DefinitionCard';
 import PickerCardNode from './PickerCard';
@@ -16,6 +18,7 @@ function InnerCanvas() {
   const cards = useSessionStore((s) => s.cards);
   const edges = useSessionStore((s) => s.edges);
   const setCards = useSessionStore((s) => s.setCards);
+  const setEdges = useSessionStore((s) => s.setEdges);
 
   const nodes: Node[] = useMemo(
     () => cards.map((c) => ({
@@ -55,6 +58,18 @@ function InnerCanvas() {
     // which sweep matching edges out of the store. No-op here.
   }, []);
 
+  const onConnect = useCallback((c: Connection) => {
+    if (!c.source || !c.target) return;
+    const label = window.prompt('Edge label (optional):') ?? undefined;
+    setEdges((es) => addEdgeOp(es, {
+      id: nanoid(),
+      source: c.source!,
+      target: c.target!,
+      kind: 'manual',
+      label: label || undefined,
+    }));
+  }, [setEdges]);
+
   return (
     <div className="h-full w-full">
       <ReactFlow
@@ -62,6 +77,7 @@ function InnerCanvas() {
         edges={flowEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
         nodeTypes={nodeTypes}
         fitView
       >
