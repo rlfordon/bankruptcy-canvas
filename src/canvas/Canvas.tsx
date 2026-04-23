@@ -7,8 +7,9 @@ import '@xyflow/react/dist/style.css';
 import { useSessionStore } from '@/state/sessionStore';
 import { moveCard } from '@/state/cardOps';
 import SectionCardNode from './SectionCard';
+import DefinitionCardNode from './DefinitionCard';
 
-const nodeTypes = { section: SectionCardNode };
+const nodeTypes = { section: SectionCardNode, definition: DefinitionCardNode };
 
 function InnerCanvas() {
   const cards = useSessionStore((s) => s.cards);
