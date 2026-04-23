@@ -8,8 +8,9 @@ import { useSessionStore } from '@/state/sessionStore';
 import { moveCard } from '@/state/cardOps';
 import SectionCardNode from './SectionCard';
 import DefinitionCardNode from './DefinitionCard';
+import PickerCardNode from './PickerCard';
 
-const nodeTypes = { section: SectionCardNode, definition: DefinitionCardNode };
+const nodeTypes = { section: SectionCardNode, definition: DefinitionCardNode, picker: PickerCardNode };
 
 function InnerCanvas() {
   const cards = useSessionStore((s) => s.cards);
