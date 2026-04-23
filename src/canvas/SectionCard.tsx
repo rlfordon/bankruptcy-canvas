@@ -37,6 +37,13 @@ export default function SectionCardNode({ data }: NodeProps) {
           <button onClick={() => setCards((cs) => togglePin(cs, card.id))} aria-pressed={card.pinned}>{card.pinned ? '📌' : '📍'}</button>
           <button onClick={() => setCards((cs) => toggleHideDefinitions(cs, card.id))}>{card.hideDefinitions ? 'show defs' : 'hide defs'}</button>
           <button
+            className="text-xs"
+            title="Spawn every ref and defined term from this section"
+            onClick={() => {
+              void import('./expandAll').then((m) => m.expandAll(card.id, card.sectionNumber));
+            }}
+          >expand all</button>
+          <button
             onClick={() => {
               setCards((cs) => removeCard(cs, card.id));
               setEdges((es) => es.filter((e) => e.source !== card.id && e.target !== card.id));
