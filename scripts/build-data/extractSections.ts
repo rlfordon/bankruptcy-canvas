@@ -1,3 +1,5 @@
+import { attrOf, childrenOf, firstDescendant, immediateChildren, tagOf, textOf, type OrderedNode, type OrderedTree } from './uscTree';
+
 export type SectionNode =
   | { kind: 'text'; value: string }
   | { kind: 'ref'; href: string; value: string }
@@ -18,124 +20,128 @@ export interface Section {
   body: SectionBodyUnit;
 }
 
-const CHILD_LEVELS: Record<string, SectionBodyUnit['level'] | undefined> = {
-  subsection: 'subsection',
-  paragraph: 'paragraph',
-  subparagraph: 'subparagraph',
-  clause: 'clause',
-  subclause: 'subclause',
-};
+const STRUCTURAL_TAGS = new Set<SectionBodyUnit['level']>([
+  'section', 'subsection', 'paragraph', 'subparagraph', 'clause', 'subclause',
+]);
 
-function textOf(x: unknown): string {
-  if (x == null) return '';
-  if (typeof x === 'string') return x;
-  if (Array.isArray(x)) return x.map(textOf).join('');
-  if (typeof x === 'object') {
-    const o = x as Record<string, unknown>;
-    return textOf(o['#text']) + Object.entries(o)
-      .filter(([k]) => k !== '#text' && !k.startsWith('@_'))
-      .map(([, v]) => textOf(v))
-      .join('');
-  }
-  return String(x);
-}
-
-function inlineNodesOf(x: unknown): SectionNode[] {
+/**
+ * Walk an element's immediate children IN SOURCE ORDER, yielding inline nodes
+ * (text/ref) for the `nodes` array and leaving structural children
+ * (subsection/paragraph/etc.) to the caller.
+ */
+function inlineNodesOf(tree: OrderedTree): SectionNode[] {
   const out: SectionNode[] = [];
-  const walk = (node: unknown): void => {
-    if (node == null) return;
-    if (typeof node === 'string') {
-      if (node) out.push({ kind: 'text', value: node });
-      return;
+  for (const node of tree) {
+    const t = tagOf(node);
+    if (!t) continue;
+    if (t === '#text') {
+      const val = String(node['#text'] ?? '');
+      if (val) out.push({ kind: 'text', value: val });
+      continue;
     }
-    if (Array.isArray(node)) { node.forEach(walk); return; }
-    if (typeof node === 'object') {
-      const o = node as Record<string, unknown>;
-      // fast-xml-parser puts attributes and children under the same object.
-      for (const [k, v] of Object.entries(o)) {
-        if (k.startsWith('@_')) continue;
-        if (k === '#text') { if (v) out.push({ kind: 'text', value: String(v) }); continue; }
-        if (k === 'ref') {
-          const refs = Array.isArray(v) ? v : [v];
-          for (const r of refs) {
-            const ro = r as Record<string, unknown>;
-            out.push({ kind: 'ref', href: String(ro['@_href'] ?? ''), value: textOf(ro) });
-          }
-          continue;
-        }
-        // Any other nested tag: recurse for inline text (skip block-level siblings — handled by children).
-        if (CHILD_LEVELS[k]) continue;
-        walk(v);
-      }
+    if (t === 'ref') {
+      out.push({
+        kind: 'ref',
+        href: attrOf(node, '@_href') ?? '',
+        value: textOf(childrenOf(node, 'ref')),
+      });
+      continue;
     }
-  };
-  walk(x);
+    // For chapeau / content / non-structural wrapper tags, recurse so their inline
+    // text/refs flatten into the parent unit's nodes array, in order.
+    if (!STRUCTURAL_TAGS.has(t as SectionBodyUnit['level']) && t !== 'num' && t !== 'heading') {
+      out.push(...inlineNodesOf(childrenOf(node, t)));
+    }
+  }
   return out;
 }
 
 function buildUnit(
-  node: Record<string, unknown>,
+  node: OrderedNode,
   level: SectionBodyUnit['level'],
   parentId: string,
 ): SectionBodyUnit {
-  // fast-xml-parser can demote an empty tag (e.g. `<subsection/>`) to a string.
-  // Skip it defensively so callers' children arrays stay well-typed.
-  if (typeof node !== 'object' || node === null) {
+  const tag = tagOf(node);
+  if (!tag) {
     return { id: parentId, level, num: '', nodes: [], children: [] };
   }
-  // At the section level, parentId is already the section number (e.g., '546')
-  // and the Section.num field is empty per the type contract. For all other
-  // levels, this unit's <num> appends to parentId (e.g., '546' + '(a)' → '546(a)').
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const numRaw = (node.num as any)?.['@_value'] ?? '';
-  const num = level === 'section' ? '' : numRaw ? `(${String(numRaw)})` : '';
+  const children = childrenOf(node, tag);
+
+  // Build this unit's num from a <num value> child (if any).
+  const numNode = children.find((c) => tagOf(c) === 'num');
+  const numRaw = numNode ? attrOf(numNode, '@_value') ?? '' : '';
+  const num = level === 'section' ? '' : numRaw ? `(${numRaw})` : '';
   const id = level === 'section' ? parentId : `${parentId}${num}`;
 
-  // Order matters at THIS granularity: USLM emits chapeau → content → trailing
-  // text, and that outer order is preserved here. NOTE: within a single
-  // <content> that mixes refs and text (e.g. "...under <ref>X</ref> or <ref>Y</ref> may..."),
-  // `preserveOrder: false` in parseXml.ts means fast-xml-parser groups all refs
-  // and merges all text siblings — so `nodes` currently emits [all refs, then
-  // the merged text] rather than source-order. Fix before Task 19; see
-  // project_inline_order_debt memory note.
-  const inlineSources: unknown[] = [node.chapeau, node.content, node['#text']];
+  // Inline nodes: walk every immediate child, skipping <num>, <heading>, and
+  // structural children. Order is preserved because `children` is source-ordered.
   const nodes: SectionNode[] = [];
-  for (const s of inlineSources) nodes.push(...inlineNodesOf(s));
-
-  const children: SectionBodyUnit[] = [];
-  for (const [tag, childLevel] of Object.entries(CHILD_LEVELS)) {
-    const raw = node[tag];
-    if (!raw) continue;
-    const arr = Array.isArray(raw) ? raw : [raw];
-    for (const c of arr) children.push(buildUnit(c as Record<string, unknown>, childLevel!, id));
+  for (const child of children) {
+    const ct = tagOf(child);
+    if (!ct) continue;
+    if (ct === 'num' || ct === 'heading') continue;
+    if (STRUCTURAL_TAGS.has(ct as SectionBodyUnit['level'])) continue;
+    if (ct === '#text') {
+      const val = String(child['#text'] ?? '');
+      if (val) nodes.push({ kind: 'text', value: val });
+    } else if (ct === 'ref') {
+      nodes.push({
+        kind: 'ref',
+        href: attrOf(child, '@_href') ?? '',
+        value: textOf(childrenOf(child, 'ref')),
+      });
+    } else {
+      // chapeau, content, or other wrapper — flatten its inline nodes into the unit.
+      nodes.push(...inlineNodesOf(childrenOf(child, ct)));
+    }
   }
 
-  return { id, level, num, nodes, children };
+  // Structural children.
+  const structuralChildren: SectionBodyUnit[] = [];
+  for (const child of children) {
+    const ct = tagOf(child) as SectionBodyUnit['level'] | undefined;
+    if (!ct || !STRUCTURAL_TAGS.has(ct) || ct === 'section') continue;
+    structuralChildren.push(buildUnit(child, ct, id));
+  }
+
+  return { id, level, num, nodes, children: structuralChildren };
+}
+
+function emitSection(sec: OrderedNode, chapterNum: string): Section {
+  const secChildren = childrenOf(sec, 'section');
+  const numNode = secChildren.find((c) => tagOf(c) === 'num');
+  const sectionNumber = numNode ? attrOf(numNode, '@_value') ?? '' : '';
+  const headingNode = secChildren.find((c) => tagOf(c) === 'heading');
+  const heading = headingNode ? textOf(childrenOf(headingNode, 'heading')).trim() : '';
+  const body = buildUnit(sec, 'section', sectionNumber);
+  return { sectionNumber, chapter: chapterNum, heading, body };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function extractSections(tree: any): Section[] {
-  const title = tree.uscDoc.main.title;
-  const chapters = Array.isArray(title.chapter) ? title.chapter : [title.chapter];
+  const rootTree: OrderedTree = tree as OrderedTree;
+  const uscDoc = firstDescendant(rootTree, 'uscDoc');
+  if (!uscDoc) return [];
+  const uscDocChildren = childrenOf(uscDoc, 'uscDoc');
+  const main = uscDocChildren.find((n) => tagOf(n) === 'main');
+  if (!main) return [];
+  const title = childrenOf(main, 'main').find((n) => tagOf(n) === 'title');
+  if (!title) return [];
+  const chapters = immediateChildren(childrenOf(title, 'title'), 'chapter');
+
   const sections: Section[] = [];
   for (const ch of chapters) {
-    const chapterNum = String(ch.num?.['@_value'] ?? '');
-    const secArr = Array.isArray(ch.section) ? ch.section : ch.section ? [ch.section] : [];
-    for (const sec of secArr) {
-      const sectionNumber = String(sec.num?.['@_value'] ?? '');
-      const heading = textOf(sec.heading).trim();
-      const body = buildUnit(sec, 'section', sectionNumber);
-      sections.push({ sectionNumber, chapter: chapterNum, heading, body });
+    const chChildren = childrenOf(ch, 'chapter');
+    const chNumNode = chChildren.find((c) => tagOf(c) === 'num');
+    const chapterNum = chNumNode ? attrOf(chNumNode, '@_value') ?? '' : '';
+    // Direct sections under the chapter.
+    for (const sec of immediateChildren(chChildren, 'section')) {
+      sections.push(emitSection(sec, chapterNum));
     }
-    // Subchapters: flatten (v1 treats them as chapter-scoped).
-    const subArr = Array.isArray(ch.subchapter) ? ch.subchapter : ch.subchapter ? [ch.subchapter] : [];
-    for (const sub of subArr) {
-      const secArr2 = Array.isArray(sub.section) ? sub.section : sub.section ? [sub.section] : [];
-      for (const sec of secArr2) {
-        const sectionNumber = String(sec.num?.['@_value'] ?? '');
-        const heading = textOf(sec.heading).trim();
-        const body = buildUnit(sec, 'section', sectionNumber);
-        sections.push({ sectionNumber, chapter: chapterNum, heading, body });
+    // Subchapter-flattened sections (v1: subchapter rolls up to chapter).
+    for (const sub of immediateChildren(chChildren, 'subchapter')) {
+      for (const sec of immediateChildren(childrenOf(sub, 'subchapter'), 'section')) {
+        sections.push(emitSection(sec, chapterNum));
       }
     }
   }

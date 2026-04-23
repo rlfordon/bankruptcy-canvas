@@ -1,23 +1,19 @@
 import { XMLParser } from 'fast-xml-parser';
 
-// fast-xml-parser options tuned for USLM:
-// - preserveOrder: false keeps hierarchy simple; we read structurally.
-// - attributeNamePrefix '@_' is the library default.
-// - isArray forces repeated elements to always be arrays for deterministic shape.
-// - trimValues: false keeps leading/trailing whitespace around text nodes so inline
-//   ordering like "An action under <ref>section 547</ref> may be commenced." survives.
-// - isArray is keyed on local tag name only; tags in REPEATING are forced to array
-//   wherever they appear, regardless of parent context.
-const REPEATING = new Set([
-  'chapter', 'subchapter', 'section', 'subsection', 'paragraph',
-  'subparagraph', 'clause', 'subclause', 'ref', 'note', 'p',
-]);
-
+// USLM-tuned parser.
+// - preserveOrder:true keeps source order of mixed-content elements (refs/text
+//   interleaved). This is critical for rendering sections like §546 where the
+//   text flow is "...under <ref>547</ref> or <ref>548</ref> may...". Without it,
+//   fast-xml-parser collapses all refs and all text into separate buckets,
+//   losing their interleaved ordering.
+// - attributeNamePrefix '@_' is the library default; attrs live under ':@'.
+// - trimValues:false preserves leading/trailing whitespace so spaces around
+//   inline elements survive ("An action under " + <ref> + " may be commenced.").
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
   textNodeName: '#text',
-  isArray: (tag) => REPEATING.has(tag),
+  preserveOrder: true,
   trimValues: false,
   processEntities: true,
 });

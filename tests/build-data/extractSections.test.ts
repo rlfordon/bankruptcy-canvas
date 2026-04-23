@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseUscXml } from '../../scripts/build-data/parseXml';
 import { extractSections } from '../../scripts/build-data/extractSections';
+import type { SectionNode } from '../../scripts/build-data/extractSections';
 
 const fixture = (name: string) =>
   readFileSync(join(__dirname, 'fixtures', name), 'utf8');
@@ -62,5 +63,29 @@ describe('extractSections', () => {
     expect(subparaA.id).toBe('547(a)(1)(A)');
     expect(subparaA.level).toBe('subparagraph');
     expect(subparaA.nodes[0]).toEqual({ kind: 'text', value: 'leaf' });
+  });
+
+  it('preserves source order when a subsection has refs interspersed with text', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<uscDoc xmlns="http://xml.house.gov/schemas/uslm/1.0" identifier="/us/usc/t11">
+  <main><title identifier="/us/usc/t11"><num value="11">Title 11</num><heading>BANKRUPTCY</heading>
+    <chapter identifier="/us/usc/t11/ch5"><num value="5">5</num><heading>Creditors</heading>
+      <section identifier="/us/usc/t11/s549"><num value="549">§ 549</num><heading>Postpetition</heading>
+        <subsection identifier="/us/usc/t11/s549/a"><num value="a">(a)</num><content>An action under <ref href="/us/usc/t11/s547">section 547</ref> or <ref href="/us/usc/t11/s548">section 548</ref> may be commenced.</content></subsection>
+      </section>
+    </chapter>
+  </title></main>
+</uscDoc>`;
+    const sections = extractSections(parseUscXml(xml));
+    const s549 = sections.find((s) => s.sectionNumber === '549')!;
+    const subA = s549.body.children[0]!;
+    const kinds = subA.nodes.map((n) => n.kind);
+    expect(kinds).toEqual(['text', 'ref', 'text', 'ref', 'text']);
+    const texts = subA.nodes
+      .filter((n): n is Extract<SectionNode, { kind: 'text' }> => n.kind === 'text')
+      .map((n) => n.value);
+    expect(texts[0]).toContain('An action under');
+    expect(texts[1]).toContain(' or ');
+    expect(texts[2]).toContain('may be commenced');
   });
 });
