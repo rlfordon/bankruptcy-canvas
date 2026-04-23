@@ -67,3 +67,12 @@ describe('extractTerms — chapter-scoped', () => {
     });
   });
 });
+
+describe('extractTerms — ambiguity', () => {
+  it('returns all candidates for terms defined in multiple scopes', () => {
+    const terms = extractTerms(parseUscXml(fixture('ambiguous-terms.xml')));
+    const scopes = terms.person!.candidates.map((c) => c.scope).sort();
+    expect(scopes).toEqual(['chapter:7', 'title']);
+    expect(terms.person!.candidates).toHaveLength(2);
+  });
+});
