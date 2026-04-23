@@ -16,6 +16,16 @@ function renderNode(
 ) {
   if (n.kind === 'text') return <span key={i}>{n.value}</span>;
   if (n.kind === 'ref') {
+    // External refs (out-of-Title-11 or malformed USLM hrefs) have no destination
+    // card in the canvas. Render them as non-clickable text with a tooltip.
+    const isInternal = /^\/us\/usc\/t11\/s/.test(n.href);
+    if (!isInternal) {
+      return (
+        <span key={i} className="text-slate-500" title={`External reference: ${n.href}`}>
+          {n.value}
+        </span>
+      );
+    }
     return (
       <a
         key={i}
