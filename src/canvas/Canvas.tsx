@@ -6,6 +6,9 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useSessionStore } from '@/state/sessionStore';
 import { moveCard } from '@/state/cardOps';
+import SectionCardNode from './SectionCard';
+
+const nodeTypes = { section: SectionCardNode };
 
 function InnerCanvas() {
   const cards = useSessionStore((s) => s.cards);
@@ -57,7 +60,7 @@ function InnerCanvas() {
         edges={flowEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        nodeTypes={{ /* registered in Task 19-21 */ }}
+        nodeTypes={nodeTypes}
         fitView
       >
         <Background />
