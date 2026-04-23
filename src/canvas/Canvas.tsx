@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import {
-  ReactFlow, ReactFlowProvider, Background, Controls,
+  ReactFlow, Background, Controls,
   type Node, type Edge as FlowEdge, type NodeChange, type EdgeChange,
   type Connection,
 } from '@xyflow/react';
@@ -14,7 +14,7 @@ import PickerCardNode from './PickerCard';
 
 const nodeTypes = { section: SectionCardNode, definition: DefinitionCardNode, picker: PickerCardNode };
 
-function InnerCanvas() {
+export default function Canvas() {
   const cards = useSessionStore((s) => s.cards);
   const edges = useSessionStore((s) => s.edges);
   const setCards = useSessionStore((s) => s.setCards);
@@ -85,13 +85,5 @@ function InnerCanvas() {
         <Controls />
       </ReactFlow>
     </div>
-  );
-}
-
-export default function Canvas() {
-  return (
-    <ReactFlowProvider>
-      <InnerCanvas />
-    </ReactFlowProvider>
   );
 }
