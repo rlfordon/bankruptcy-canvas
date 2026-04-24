@@ -8,7 +8,8 @@ import type { Card, DefinitionCard, Edge, PickerCard, SectionCard } from '@/type
 const OFFSET_X = 560;
 const OFFSET_Y = 60;
 
-function sourceOrigin(sourceId: string): { x: number; y: number } {
+function sourceOrigin(sourceId: string | null): { x: number; y: number } {
+  if (sourceId === null) return { x: 0, y: 0 };
   const src = useSessionStore.getState().cards.find((c) => c.id === sourceId);
   return src ? { x: src.x + OFFSET_X, y: src.y + OFFSET_Y } : { x: 0, y: 0 };
 }
@@ -17,14 +18,16 @@ function pushHistory(cardId: string): void {
   useSessionStore.getState().pushHistory({ cardId, openedAt: Date.now() });
 }
 
-function spawn(card: Card, sourceId: string): void {
-  const edge: Edge = { id: nanoid(), source: sourceId, target: card.id, kind: 'auto' };
+function spawn(card: Card, sourceId: string | null): void {
   useSessionStore.getState().setCards((cs) => addCard(cs, card));
-  useSessionStore.getState().setEdges((es) => addEdge(es, edge));
+  if (sourceId !== null) {
+    const edge: Edge = { id: nanoid(), source: sourceId, target: card.id, kind: 'auto' };
+    useSessionStore.getState().setEdges((es) => addEdge(es, edge));
+  }
   pushHistory(card.id);
 }
 
-export function spawnFromRef(sourceCardId: string, href: string): void {
+export function spawnFromRef(sourceCardId: string | null, href: string): void {
   const resolved = resolveRef(href);
   if (resolved.kind === 'external') return; // external refs are rendered non-clickable
   const existing = useSessionStore.getState().cards.find(
@@ -48,7 +51,7 @@ export function spawnFromRef(sourceCardId: string, href: string): void {
   spawn(card, sourceCardId);
 }
 
-export async function spawnFromTerm(sourceCardId: string, term: string): Promise<void> {
+export async function spawnFromTerm(sourceCardId: string | null, term: string): Promise<void> {
   const terms = await loadTerms();
   const entry = terms[term];
   if (!entry) return;

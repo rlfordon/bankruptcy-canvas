@@ -11,6 +11,7 @@ import { moveCard, addEdge as addEdgeOp } from '@/state/cardOps';
 import SectionCardNode from './SectionCard';
 import DefinitionCardNode from './DefinitionCard';
 import PickerCardNode from './PickerCard';
+import EmptyState from '@/ui/EmptyState';
 
 const nodeTypes = { section: SectionCardNode, definition: DefinitionCardNode, picker: PickerCardNode };
 
@@ -71,7 +72,7 @@ export default function Canvas() {
   }, [setEdges]);
 
   return (
-    <div className="h-full w-full">
+    <div className="relative h-full w-full">
       <ReactFlow
         nodes={nodes}
         edges={flowEdges}
@@ -84,6 +85,7 @@ export default function Canvas() {
         <Background />
         <Controls />
       </ReactFlow>
+      {cards.length === 0 && <EmptyState />}
     </div>
   );
 }

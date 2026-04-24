@@ -1,5 +1,19 @@
 import { test, expect } from '@playwright/test';
 
+test('empty state is visible on first load and disappears after spawning a card', async ({ page }) => {
+  await page.goto('/');
+
+  // Empty-state panel shows the intro text.
+  await expect(page.getByRole('heading', { name: 'Bankruptcy Canvas', level: 1 })).toBeVisible();
+  await expect(page.getByRole('button', { name: '547' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'claim' })).toBeVisible();
+
+  // Clicking the 547 chip spawns a section card and the empty state unmounts.
+  await page.getByRole('button', { name: '547' }).click();
+  await expect(page.getByRole('heading', { name: 'Bankruptcy Canvas', level: 1 })).toBeHidden();
+  await expect(page.locator('.bg-slate-50', { hasText: /^§\s*547/ })).toBeVisible();
+});
+
 test('search 546 → click first ref → second card appears', async ({ page }) => {
   await page.goto('/');
 
